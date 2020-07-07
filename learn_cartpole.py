@@ -9,11 +9,14 @@ class Agent:
     def __init__(self):
         pass
 
-    def __call__(self, obs):
+    def __call__(self, obs, greedy=True):
         return np.random.choice(ACTION_DIM)
 
+    def memorize_and_train(self, obs, rew, don):
+        pass
 
-def play_episode(env, agent, render=True):
+
+def play_episode(env, agent, render=True, training=False):
     don = False
     t = 0
     obs = env.reset()
@@ -24,6 +27,8 @@ def play_episode(env, agent, render=True):
             sleep(.04)
         act = agent(obs)
         obs, rew, don, inf = env.step(act)
+        if training:
+            agent.memorize_and_train(obs, rew, don)
 
     print("Episode finished after {} timesteps".format(t))
     if render:
