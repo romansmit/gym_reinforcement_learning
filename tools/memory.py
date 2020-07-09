@@ -11,7 +11,7 @@ class StepMemory:
         :param mem_size: number of time steps that can me saved
         :param state_dim: dimension of the states
         :param action_dim: dimension of the action space
-        :param res_sampling: whather reservoir sampling is used to save new memories
+        :param res_sampling: whether reservoir sampling is used to save new memories
         :param discrete_action: whether the action space is discrete
         """
         self.mem_size = mem_size
