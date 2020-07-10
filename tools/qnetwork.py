@@ -19,7 +19,8 @@ class QNet:
         layers.append(nn.Linear(prev_dim, action_dim))
 
         self.net = nn.Sequential(*layers)
-        self.optim = optim.SGD(self.net.parameters(), lr=lr, weight_decay=.005, momentum=.0)
+        self.params = self.net.parameters()
+        self.optim = optim.SGD(self.params, lr=lr, weight_decay=.001, momentum=.0)
         self.loss_function = nn.functional.smooth_l1_loss
 
     def train(self, batch):
@@ -33,6 +34,16 @@ class QNet:
         self.net.zero_grad()
         loss.backward()
         self.optim.step()
+
+    def write_tb_stats(self, tb_writer, i_episode):
+        avg_wght = torch.tensor([param.mean() for param in self.net.parameters()]).mean().item()
+        avg_abs_wght = torch.tensor([param.abs().mean() for param in self.net.parameters()]).mean().item()
+        min_abs_wght = torch.tensor([param.abs().min() for param in self.net.parameters()]).min().item()
+        max_abs_wght = torch.tensor([param.abs().max() for param in self.net.parameters()]).max().item()
+        tb_writer.add_scalar(f'QNet/average_weight', avg_wght, i_episode)
+        tb_writer.add_scalar(f'QNet/average_absolute_weight', avg_abs_wght, i_episode)
+        tb_writer.add_scalar(f'QNet/min_absolute_weight', min_abs_wght, i_episode)
+        tb_writer.add_scalar(f'QNet/max_absolute_weight', max_abs_wght, i_episode)
 
 
 
