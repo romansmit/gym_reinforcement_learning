@@ -19,7 +19,7 @@ class QNet:
         layers.append(nn.Linear(prev_dim, action_dim))
 
         self.net = nn.Sequential(*layers)
-        self.optim = optim.SGD(self.net.parameters(), lr=lr, weight_decay=.01, momentum=.0)
+        self.optim = optim.SGD(self.net.parameters(), lr=lr, weight_decay=.005, momentum=.0)
         self.loss_function = nn.functional.smooth_l1_loss
 
     def train(self, batch):

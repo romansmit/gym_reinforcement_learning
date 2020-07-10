@@ -5,23 +5,17 @@ from tools.memory import StepMemory
 from tqdm import tqdm
 from tools.qnetwork import QNet
 
-STATE_DIM = 4
-ACTION_DIM = 2
-T_MAX = 200
-
-MEM_SIZE = 10000
-TRAINING_INTERVAL = 16
 
 class Agent:
-    def __init__(self, mem_size=MEM_SIZE, state_dim=STATE_DIM, action_dim=ACTION_DIM,
-                 training_interval=TRAINING_INTERVAL):
+    def __init__(self, mem_size, state_dim, action_dim,
+                 hidden_layers, training_interval, tb_writer=None):
 
         self.memory = StepMemory(mem_size=mem_size, state_dim=state_dim, action_dim=action_dim,
                                  res_sampling=True, discrete_action=True)
         self.training_interval = training_interval
         self.steps_learned = 0
 
-        self.qnet = QNet(action_dim=ACTION_DIM, state_dim=STATE_DIM, hidden_layers=[200, 200])
+        self.qnet = QNet(action_dim=ACTION_DIM, state_dim=STATE_DIM, hidden_layers=hidden_layers)
 
     def __call__(self, obs, greedy=True):
         q = self.qnet(obs)
@@ -77,7 +71,21 @@ def play_episode(env, agent, render=True, training=False, verbose=False):
 
 
 if __name__ == '__main__':
-    agent = Agent()
+
+    from torch.utils.tensorboard import SummaryWriter
+
+    STATE_DIM = 4
+    ACTION_DIM = 2
+    T_MAX = 200
+
+    MEM_SIZE = 10000
+    TRAINING_INTERVAL = 16
+    HIDDEN_LAYERS = [200, 200]
+
+    tb_writer = SummaryWriter(log_dir='runs/cartpole')
+
+    agent = Agent(mem_size=MEM_SIZE, state_dim=STATE_DIM, action_dim=ACTION_DIM,
+                  hidden_layers=HIDDEN_LAYERS, training_interval=TRAINING_INTERVAL, tb_writer=tb_writer)
     train_agent(agent, n_episodes=1000, verbose=True)
 
 
