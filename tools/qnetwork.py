@@ -2,7 +2,7 @@ from torch import nn, optim
 import torch
 
 class QNet:
-    def __init__(self, action_dim, state_dim, hidden_layers, discount=.99, lr=.01):
+    def __init__(self, action_dim, state_dim, hidden_layers, discount=.99, lr=.005):
 
         self.dtype = torch.float32
 
@@ -46,10 +46,8 @@ class QNet:
         tb_writer.add_scalar(f'QNet/max_absolute_weight', max_abs_wght, i_episode)
 
 
-
-
     def __call__(self, obs):
         obs = torch.tensor(obs, dtype=self.dtype)
         with torch.no_grad():
-            q = self.net(obs)
-        return q.numpy()
+            q = self.net(obs).numpy()
+        return q
