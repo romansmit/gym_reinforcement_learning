@@ -9,7 +9,8 @@ from random import random, randrange
 
 class Agent:
     def __init__(self, mem_size, state_dim, action_dim,
-                 hidden_layers, training_interval, expl_time, eps_decay_time, eps_base):
+                 hidden_layers, training_interval, expl_time, eps_decay_time, eps_base,
+                 lag_update_time):
 
         self.memory = StepMemory(mem_size=mem_size, state_dim=state_dim, action_dim=action_dim,
                                  res_sampling=True, discrete_action=True)
@@ -17,13 +18,18 @@ class Agent:
         self.steps_learned = 0
         self.episodes_learned = 0
 
+        self.lag_update_time = lag_update_time
+        self.batches_trained = 0
+
         self.eps = 1.
         self.expl_time = expl_time
         self.eps_decay_time = eps_decay_time
         self.eps_base = eps_base
         self.eps_reduce = (1 - eps_base) / eps_decay_time
 
-        self.qnet = QNet(action_dim=ACTION_DIM, state_dim=STATE_DIM, hidden_layers=hidden_layers)
+        self.qnet = QNet(action_dim=ACTION_DIM, state_dim=STATE_DIM, hidden_layers=hidden_layers,
+                         discount=.97, lr=.01, wgt_decay=.001, lagged=True)
+
         self.action_dim = action_dim
 
     def __call__(self, obs, greedy):
@@ -51,12 +57,16 @@ class Agent:
             self.train()
 
     def train(self):
-        batch_size = self.training_interval
+        batch_size = 8 * self.training_interval
         batch = self.memory.get_batch(batch_size)
         self.qnet.train(batch)
+        self.batches_trained += 1
+        if self.batches_trained % self.lag_update_time == 0:
+            self.qnet.transfer_lag()
 
     def write_tb_stats(self, tb_writer, i_episode):
         self.qnet.write_tb_stats(tb_writer, i_episode)
+        tb_writer.add_scalar(f'Agent/epsilon', self.eps, i_episode)
 
 
 def train_agent(agent, n_episodes, verbose=False, tb_writer=None):
@@ -75,9 +85,9 @@ def train_agent(agent, n_episodes, verbose=False, tb_writer=None):
             action_ratio = np.array(action_ratios).mean()
             scores_temp = []
             action_ratios = []
-            tb_writer.add_scalar(f'game/avg_score', avg_score, i_ep)
-            tb_writer.add_scalar(f'game/act0', action_ratio, i_ep)
-            tb_writer.add_scalar(f'game/act1', 1-action_ratio, i_ep)
+            tb_writer.add_scalar(f'Game/avg_score', avg_score, i_ep)
+            tb_writer.add_scalar(f'Game/act0', action_ratio, i_ep)
+            tb_writer.add_scalar(f'Game/act1', 1-action_ratio, i_ep)
     env.close()
     if verbose:
         print('Scores: ', scores)
@@ -125,17 +135,19 @@ if __name__ == '__main__':
     TRAINING_INTERVAL = 16
     HIDDEN_LAYERS = [200, 200]
 
-    EXPLORATION_TIME = 100
-    EPSILON_DECAY_TIME = 200
-    EPSILON_BASE = .05
+    EXPLORATION_TIME = 50
+    EPSILON_DECAY_TIME = 150
+    EPSILON_BASE = .04
+    LAG_UPDATE_TIME = 5
 
     tb_writer = SummaryWriter(log_dir='runs/cartpole/{}'.format(START_TIME))
 
     agent = Agent(mem_size=MEM_SIZE, state_dim=STATE_DIM, action_dim=ACTION_DIM,
                   hidden_layers=HIDDEN_LAYERS, training_interval=TRAINING_INTERVAL,
-                  expl_time=EXPLORATION_TIME, eps_decay_time=EPSILON_DECAY_TIME, eps_base=EPSILON_BASE)
+                  expl_time=EXPLORATION_TIME, eps_decay_time=EPSILON_DECAY_TIME, eps_base=EPSILON_BASE,
+                  lag_update_time=LAG_UPDATE_TIME)
 
-    train_agent(agent, n_episodes=1000, verbose=True, tb_writer=tb_writer)
+    train_agent(agent, n_episodes=10000, verbose=True, tb_writer=tb_writer)
 
     env = gym.make('CartPole-v0')
     play_episode(env, agent, render=True, training=False, verbose=True)
