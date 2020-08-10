@@ -4,6 +4,7 @@ from time import sleep
 from tools.memory import StepMemory
 from tqdm import tqdm
 from tools.qnetwork import QNet
+from tools.multiqnetwork import MultiQNet
 from random import random, randrange
 
 
@@ -27,7 +28,7 @@ class Agent:
         self.eps_base = eps_base
         self.eps_reduce = (1 - eps_base) / eps_decay_time
 
-        self.qnet = QNet(action_dim=ACTION_DIM, state_dim=STATE_DIM, hidden_layers=hidden_layers,
+        self.qnet = MultiQNet(n_copies=3, action_dim=ACTION_DIM, state_dim=STATE_DIM, hidden_layers=hidden_layers,
                          discount=.97, lr=.01, wgt_decay=.001, lagged=True)
 
         self.action_dim = action_dim
@@ -36,7 +37,7 @@ class Agent:
         if (not greedy) and random() < self.eps:
             return randrange(self.action_dim)
         else:
-            q = self.qnet(obs)
+            q = self.qnet(obs).mean(axis=0)
             act = np.argmax(q).item()
             return act
 
