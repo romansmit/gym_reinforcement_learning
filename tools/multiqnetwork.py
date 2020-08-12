@@ -3,7 +3,7 @@ import torch
 
 class MultiQNet:
     def __init__(self, n_copies, action_dim, state_dim, hidden_layers, discount, lr, wgt_decay,
-                 lagged=False, cuda=True):
+                 polyak=False, cuda=True):
 
         self.n_copies = n_copies
 
@@ -23,11 +23,10 @@ class MultiQNet:
 
         self.net = self.make_multi_net(n_copies, action_dim, state_dim, hidden_layers)
 
-        self.lagged = lagged
-        if lagged:
+        self.polyak = polyak
+        if polyak:
             self.lagged_net = self.make_multi_net(n_copies, action_dim, state_dim, hidden_layers)
-            self.lag_state = self.net.state_dict()
-            self.lagged_net.load_state_dict(self.lag_state)
+            self.transfer_parameters(polyak=0)
         self.params = self.net.parameters()
         self.optim = optim.SGD(self.params, lr=lr, weight_decay=wgt_decay, momentum=.01)
         self.loss_function = nn.functional.smooth_l1_loss
@@ -42,6 +41,13 @@ class MultiQNet:
         layers.append(nn.Linear(prev_dim, action_dim))
         return nn.Sequential(*layers)
 
+    def transfer_parameters(self, polyak):
+        state_dict = self.lagged_net.state_dict()
+        update_state = self.net.state_dict()
+        for key, old_param in state_dict.items():
+            state_dict[key] = polyak * old_param + (1-polyak) * update_state[key]
+        self.lagged_net.load_state_dict(state_dict)
+
     def make_multi_net(self, n_copies, action_dim, state_dim, hidden_layers):
         module_list = nn.ModuleList([self.make_single_net(action_dim, state_dim, hidden_layers)
                                      for _ in range(n_copies)])
@@ -51,10 +57,6 @@ class MultiQNet:
         multi_net.to(self.device)
         return multi_net
 
-    def transfer_lag(self):
-        self.lagged_net.load_state_dict(self.lag_state)
-        self.lag_state = self.net.state_dict()
-
     def train(self, batch):
         act_mask = torch.stack([self.action_matrix[a] for a in batch['act']])
         obs1, obs2, rew, don = [torch.tensor(batch[x], dtype=self.dtype, device=self.device)
@@ -62,13 +64,14 @@ class MultiQNet:
                                 ]
         q_direct = torch.sum(self.net(obs1) * act_mask, dim=2)
         with torch.no_grad():
-            net = self.lagged_net if self.lagged else self.net
+            net = self.lagged_net if self.polyak else self.net
             q_discount = rew + torch.max(net(obs2), dim=2)[0] * self.discount
             q_discount = q_discount * don
         loss = self.loss_function(q_direct, q_discount)
         self.net.zero_grad()
         loss.backward()
         self.optim.step()
+        self.transfer_parameters(self.polyak)
 
     def write_tb_stats(self, tb_writer, i_episode):
         avg_wght = torch.tensor([param.mean().detach().to(device='cpu', dtype=torch.float32)

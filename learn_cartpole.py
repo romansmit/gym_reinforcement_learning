@@ -10,8 +10,7 @@ from random import random, randrange
 
 class Agent:
     def __init__(self, mem_size, state_dim, action_dim,
-                 hidden_layers, training_interval, expl_time, eps_decay_time, eps_base,
-                 lag_update_time):
+                 hidden_layers, training_interval, expl_time, eps_decay_time, eps_base, polyak):
 
         self.memory = StepMemory(mem_size=mem_size, state_dim=state_dim, action_dim=action_dim,
                                  res_sampling=True, discrete_action=True)
@@ -19,7 +18,6 @@ class Agent:
         self.steps_learned = 0
         self.episodes_learned = 0
 
-        self.lag_update_time = lag_update_time
         self.batches_trained = 0
 
         self.eps = 1.
@@ -29,7 +27,7 @@ class Agent:
         self.eps_reduce = (1 - eps_base) / eps_decay_time
 
         self.qnet = MultiQNet(n_copies=3, action_dim=ACTION_DIM, state_dim=STATE_DIM, hidden_layers=hidden_layers,
-                         discount=.97, lr=.01, wgt_decay=.001, lagged=True, cuda=False)
+                              discount=.97, lr=.01, wgt_decay=.001, polyak=polyak, cuda=False)
 
         self.action_dim = action_dim
 
@@ -62,8 +60,6 @@ class Agent:
         batch = self.memory.get_batch(batch_size)
         self.qnet.train(batch)
         self.batches_trained += 1
-        if self.batches_trained % self.lag_update_time == 0:
-            self.qnet.transfer_lag()
 
     def write_tb_stats(self, tb_writer, i_episode):
         self.qnet.write_tb_stats(tb_writer, i_episode)
@@ -139,14 +135,13 @@ if __name__ == '__main__':
     EXPLORATION_TIME = 50
     EPSILON_DECAY_TIME = 150
     EPSILON_BASE = .04
-    LAG_UPDATE_TIME = 5
+    POLYAK = .8
 
     tb_writer = SummaryWriter(log_dir='runs/cartpole/{}'.format(START_TIME))
 
     agent = Agent(mem_size=MEM_SIZE, state_dim=STATE_DIM, action_dim=ACTION_DIM,
                   hidden_layers=HIDDEN_LAYERS, training_interval=TRAINING_INTERVAL,
-                  expl_time=EXPLORATION_TIME, eps_decay_time=EPSILON_DECAY_TIME, eps_base=EPSILON_BASE,
-                  lag_update_time=LAG_UPDATE_TIME)
+                  expl_time=EXPLORATION_TIME, eps_decay_time=EPSILON_DECAY_TIME, eps_base=EPSILON_BASE, polyak=POLYAK)
 
     train_agent(agent, n_episodes=10000, verbose=True, tb_writer=tb_writer)
 
