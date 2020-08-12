@@ -29,7 +29,7 @@ class Agent:
         self.eps_reduce = (1 - eps_base) / eps_decay_time
 
         self.qnet = MultiQNet(n_copies=3, action_dim=ACTION_DIM, state_dim=STATE_DIM, hidden_layers=hidden_layers,
-                         discount=.97, lr=.01, wgt_decay=.001, lagged=True)
+                         discount=.97, lr=.01, wgt_decay=.001, lagged=True, cuda=False)
 
         self.action_dim = action_dim
 

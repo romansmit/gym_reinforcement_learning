@@ -3,13 +3,21 @@ import torch
 
 class MultiQNet:
     def __init__(self, n_copies, action_dim, state_dim, hidden_layers, discount, lr, wgt_decay,
-                 lagged=False):
+                 lagged=False, cuda=True):
 
         self.n_copies = n_copies
 
-        self.dtype = torch.float32
+        if cuda and torch.cuda.is_available():
+            self.device = torch.device('cuda')
+            self.dtype = torch.half
+            self.cuda = True
+            print('Cuda is used by biased DDQ')
+        else:
+            self.device = torch.device('cpu')
+            self.dtype = torch.float32
+            self.cuda = False
 
-        self.action_matrix = torch.eye(action_dim, dtype=self.dtype)
+        self.action_matrix = torch.eye(action_dim, dtype=self.dtype, device=self.device)
 
         self.discount = discount
 
@@ -38,6 +46,9 @@ class MultiQNet:
         module_list = nn.ModuleList([self.make_single_net(action_dim, state_dim, hidden_layers)
                                      for _ in range(n_copies)])
         multi_net = MultiModule(module_list)
+        if self.dtype == torch.half:
+            multi_net.half()
+        multi_net.to(self.device)
         return multi_net
 
     def transfer_lag(self):
@@ -46,7 +57,9 @@ class MultiQNet:
 
     def train(self, batch):
         act_mask = torch.stack([self.action_matrix[a] for a in batch['act']])
-        obs1, obs2, rew, don = [torch.tensor(batch[x], dtype=self.dtype) for x in ('obs1', 'obs2', 'rew', 'don')]
+        obs1, obs2, rew, don = [torch.tensor(batch[x], dtype=self.dtype, device=self.device)
+                                for x in ('obs1', 'obs2', 'rew', 'don')
+                                ]
         q_direct = torch.sum(self.net(obs1) * act_mask, dim=2)
         with torch.no_grad():
             net = self.lagged_net if self.lagged else self.net
@@ -58,10 +71,14 @@ class MultiQNet:
         self.optim.step()
 
     def write_tb_stats(self, tb_writer, i_episode):
-        avg_wght = torch.tensor([param.mean() for param in self.net.parameters()]).mean().item()
-        avg_abs_wght = torch.tensor([param.abs().mean() for param in self.net.parameters()]).mean().item()
-        min_abs_wght = torch.tensor([param.abs().min() for param in self.net.parameters()]).min().item()
-        max_abs_wght = torch.tensor([param.abs().max() for param in self.net.parameters()]).max().item()
+        avg_wght = torch.tensor([param.mean().detach().to(device='cpu', dtype=torch.float32)
+                                 for param in self.net.parameters()]).mean().item()
+        avg_abs_wght = torch.tensor([param.abs().mean().detach().to(device='cpu', dtype=torch.float32)
+                                     for param in self.net.parameters()]).mean().item()
+        min_abs_wght = torch.tensor([param.abs().min().detach().to(device='cpu', dtype=torch.float32)
+                                     for param in self.net.parameters()]).min().item()
+        max_abs_wght = torch.tensor([param.abs().max().detach().to(device='cpu', dtype=torch.float32)
+                                     for param in self.net.parameters()]).max().item()
         tb_writer.add_scalar(f'QNet/average_weight', avg_wght, i_episode)
         tb_writer.add_scalar(f'QNet/average_absolute_weight', avg_abs_wght, i_episode)
         tb_writer.add_scalar(f'QNet/min_absolute_weight', min_abs_wght, i_episode)
@@ -69,9 +86,9 @@ class MultiQNet:
 
 
     def __call__(self, obs):
-        obs = torch.tensor(obs, dtype=self.dtype)
+        obs = torch.tensor(obs, dtype=self.dtype, device=self.device)
         with torch.no_grad():
-            q = self.net(obs).numpy()
+            q = self.net(obs).cpu().numpy()
         return q
 
 
